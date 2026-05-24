@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     .from('sessions')
     .insert({
       name: name.trim(),
-      color: color || '#4f8ef7',
+      color: '#8b5cf6', // 全員統一：紫
       avatar_url: null,
       x: 400 + Math.random() * 200 - 100,
       y: 350 + Math.random() * 150 - 75,

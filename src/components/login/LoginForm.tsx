@@ -5,17 +5,13 @@ import { useRouter } from 'next/navigation';
 import AvatarUpload from './AvatarUpload';
 import { createClient } from '@/lib/supabase/client';
 
-const AVATAR_COLORS = [
-  '#4f8ef7', '#e05c5c', '#5cb85c', '#f0a030', '#9b59b6',
-  '#1abc9c', '#e91e8c', '#ff7043', '#78909c', '#f5c518',
-];
+const AVATAR_COLOR = '#8b5cf6'; // 全員統一：紫
 
 export default function LoginForm() {
   const router = useRouter();
   const [step, setStep] = useState<'passphrase' | 'profile'>('passphrase');
   const [passphrase, setPassphrase] = useState('');
   const [name, setName] = useState('');
-  const [color, setColor] = useState(AVATAR_COLORS[0]);
   const [avatarBlob, setAvatarBlob] = useState<Blob | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -44,11 +40,10 @@ export default function LoginForm() {
     setError('');
 
     try {
-      // まず認証 API を呼んでセッション作成
       const loginRes = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase, name, color }),
+        body: JSON.stringify({ passphrase, name, color: AVATAR_COLOR }),
       });
 
       if (!loginRes.ok) {
@@ -71,7 +66,6 @@ export default function LoginForm() {
           });
 
         if (!uploadError) {
-          // avatar_url を sessions テーブルに保存
           const { data: urlData } = supabase.storage
             .from('avatars')
             .getPublicUrl(`${sessionId}.jpg`);
@@ -153,25 +147,6 @@ export default function LoginForm() {
                          focus:ring-1 focus:ring-amber-400 transition"
               autoFocus
             />
-          </div>
-
-          {/* アバター背景色（写真なしの場合に使用） */}
-          <div>
-            <label className="block text-sm font-medium text-amber-200/80 mb-2">
-              アバターの色（写真なし時に使用）
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {AVATAR_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-8 h-8 rounded-full border-2 transition-transform
-                    ${color === c ? 'border-white scale-125' : 'border-transparent hover:scale-110'}`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
           </div>
 
           {error && <p className="text-red-400 text-sm text-center">{error}</p>}
