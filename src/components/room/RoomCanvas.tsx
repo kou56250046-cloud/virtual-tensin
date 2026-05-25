@@ -479,10 +479,14 @@ function drawZabutonArea(
 
   for (let r = 0; r < area.rows; r++) {
     for (let c = 0; c < area.cols; c++) {
-      const x = area.startX + c * cellW + pad / 2;
-      const y = area.startY + r * cellH + pad / 2;
-      const w = cellW - pad;
-      const h = cellH - pad;
+      // 正方形クッション（幅ベース）、セル中心に配置
+      const cushionSize = cellW - pad;                          // 57px
+      const cellCx = area.startX + c * cellW + cellW / 2;     // セル中心X
+      const cellCy = area.startY + r * cellH + cellH / 2;     // セル中心Y
+      const x = cellCx - cushionSize / 2;
+      const y = cellCy - cushionSize / 2;
+      const w = cushionSize;
+      const h = cushionSize;
       const seatId = `${side}-${r}-${c}`;
       const occupant = occupiedSeats.get(seatId);
 

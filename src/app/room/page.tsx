@@ -250,7 +250,7 @@ export default function RoomPage() {
       {/* メインエリア */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* キャンバス */}
-        <div className="flex-1 relative overflow-y-auto bg-[#c49050]">
+        <div className="flex-1 md:max-w-[900px] relative overflow-y-auto bg-[#c49050]">
           <RoomCanvas
             sessions={sessions}
             mySessionId={me.sessionId}
@@ -283,7 +283,8 @@ export default function RoomPage() {
         {/* チャット（PC: サイドバー、モバイル: フローティング） */}
         <div className={`
           ${showChat ? 'flex' : 'hidden md:flex'}
-          w-64 flex-col
+          flex-col
+          w-64 md:flex-1 md:min-w-[256px]
           md:border-l md:border-amber-800/30
         `}>
           <ChatPanel mySessionId={me.sessionId} myName={me.name} />
