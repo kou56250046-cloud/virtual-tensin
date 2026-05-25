@@ -18,12 +18,17 @@ export default function ChatPanel({ mySessionId, myName }: Props) {
 
   // 初期メッセージ取得 + リアルタイム購読
   useEffect(() => {
-    // 直近50件取得
+    // 8時間より古いメッセージを削除（バックグラウンド）
+    fetch('/api/messages/cleanup', { method: 'POST' }).catch(() => null);
+
+    // 過去8時間以内のメッセージを取得
+    const since = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
     supabase
       .from('messages')
       .select('*')
       .order('created_at', { ascending: true })
-      .limit(50)
+      .gte('created_at', since)
+      .limit(200)
       .then(({ data }) => {
         if (data) setMessages(data as Message[]);
       });
