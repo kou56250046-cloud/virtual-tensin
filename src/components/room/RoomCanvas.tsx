@@ -20,7 +20,7 @@ interface Props {
 }
 
 const CANVAS_W = 900;
-const CANVAS_H = 640;
+const CANVAS_H = 1280;
 const AVATAR_RADIUS = 24;
 const SEATED_RADIUS = 16;
 
@@ -149,8 +149,8 @@ export default function RoomCanvas({
       className="rounded-lg cursor-pointer touch-none select-none"
       style={{
         width: '100%',
+        maxWidth: `${CANVAS_W}px`,
         height: 'auto',
-        maxHeight: 'calc(100vh - 56px)',
         display: 'block',
       }}
     />
@@ -475,7 +475,7 @@ function drawZabutonArea(
 ) {
   const cellW = area.areaW / area.cols;
   const cellH = area.areaH / area.rows;
-  const pad = 5;
+  const pad = 18;
 
   for (let r = 0; r < area.rows; r++) {
     for (let c = 0; c < area.cols; c++) {

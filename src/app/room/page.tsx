@@ -250,7 +250,7 @@ export default function RoomPage() {
       {/* メインエリア */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* キャンバス */}
-        <div className="flex-1 relative overflow-auto flex flex-col items-center bg-[#c49050]">
+        <div className="flex-1 relative overflow-y-auto bg-[#c49050]">
           <RoomCanvas
             sessions={sessions}
             mySessionId={me.sessionId}

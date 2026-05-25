@@ -6,18 +6,18 @@ export const ZABUTON_LEFT = {
   startX: 0,
   startY: 218,
   areaW: 300,
-  areaH: 412,
+  areaH: 1040,
   cols: 4,
-  rows: 6,
+  rows: 9,
 } as const;
 
 export const ZABUTON_RIGHT = {
   startX: 600,
   startY: 218,
   areaW: 300,
-  areaH: 412,
+  areaH: 1040,
   cols: 4,
-  rows: 6,
+  rows: 9,
 } as const;
 
 /** seat_id の center 座標を返す */
