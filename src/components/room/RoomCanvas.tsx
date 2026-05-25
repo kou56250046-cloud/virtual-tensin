@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Session } from '@/types';
 import {
   drawAvatarWithPhoto,
@@ -33,6 +33,30 @@ export default function RoomCanvas({
   onZabutonClick,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // ─── ズーム / パン 状態 ───────────────────────────────────
+  const [viewScale, setViewScale] = useState(1);
+  const [viewTx, setViewTx] = useState(0);
+  const [viewTy, setViewTy] = useState(0);
+
+  // React state はバッチ更新のため、touch move では ref を同期参照する
+  const viewScaleRef = useRef(1);
+  const viewTxRef    = useRef(0);
+  const viewTyRef    = useRef(0);
+
+  // ピンチジェスチャー追跡
+  const pinchStartDistRef  = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef(1);
+  const pinchStartTxRef    = useRef(0);
+  const pinchStartTyRef    = useRef(0);
+  const pinchRectLeftRef   = useRef(0); // ピンチ開始時のcanvas自然left
+  const pinchRectTopRef    = useRef(0);
+  const pinchMidRef        = useRef<{ x: number; y: number } | null>(null);
+
+  // パン / タップ追跡
+  const panStartRef   = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const isPinchingRef = useRef(false);
+  const lastTapTimeRef = useRef(0);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -114,7 +138,44 @@ export default function RoomCanvas({
     (e: React.TouchEvent<HTMLCanvasElement>) => {
       e.preventDefault();
       if (e.touches.length === 0) return;
+
+      // ─ 2本指: ピンチ開始 ─
+      if (e.touches.length >= 2) {
+        isPinchingRef.current = true;
+        const t0 = e.touches[0], t1 = e.touches[1];
+        pinchStartDistRef.current  = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        pinchStartScaleRef.current = viewScaleRef.current;
+        pinchStartTxRef.current    = viewTxRef.current;
+        pinchStartTyRef.current    = viewTyRef.current;
+        pinchMidRef.current = {
+          x: (t0.clientX + t1.clientX) / 2,
+          y: (t0.clientY + t1.clientY) / 2,
+        };
+        // canvas の自然な位置（transform なし）を記録
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          pinchRectLeftRef.current = rect.left - viewTxRef.current;
+          pinchRectTopRef.current  = rect.top  - viewTyRef.current;
+        }
+        return;
+      }
+
+      // ─ 1本指 ─
+      isPinchingRef.current = false;
       const t = e.touches[0];
+
+      // zoom中: パン開始
+      if (viewScaleRef.current > 1) {
+        panStartRef.current = {
+          x: t.clientX, y: t.clientY,
+          tx: viewTxRef.current, ty: viewTyRef.current,
+        };
+        return;
+      }
+
+      // zoom=1: 既存ゲームロジック
+      panStartRef.current = null;
       const { x, y } = getCanvasPos(t.clientX, t.clientY);
 
       for (const s of sessions) {
@@ -127,16 +188,91 @@ export default function RoomCanvas({
       }
 
       const seatId = getZabutonAt(x, y);
-      if (seatId) {
-        onZabutonClick(seatId, x, y);
+      if (seatId) { onZabutonClick(seatId, x, y); return; }
+      if (!mySeatId) { onMove(x, y); }
+    },
+    [sessions, mySessionId, mySeatId, onMove, onAvatarClick, onZabutonClick, getCanvasPos]
+  );
+
+  // ─ onTouchMove: ピンチズーム / パン ─
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+
+      // ピンチズーム
+      if (
+        e.touches.length >= 2 &&
+        pinchStartDistRef.current !== null &&
+        pinchMidRef.current !== null
+      ) {
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const ratio = dist / pinchStartDistRef.current;
+        const newScale = Math.max(1, Math.min(4, pinchStartScaleRef.current * ratio));
+
+        // ピンチ中心点が不変になるよう translate を計算
+        const mid = pinchMidRef.current;
+        const L   = pinchRectLeftRef.current;
+        const T   = pinchRectTopRef.current;
+        const sr  = newScale / pinchStartScaleRef.current;
+        let newTx = mid.x - L - (mid.x - L - pinchStartTxRef.current) * sr;
+        let newTy = mid.y - T - (mid.y - T - pinchStartTyRef.current) * sr;
+
+        if (newScale <= 1) { newTx = 0; newTy = 0; }
+
+        viewScaleRef.current = newScale;
+        viewTxRef.current    = newTx;
+        viewTyRef.current    = newTy;
+        setViewScale(newScale);
+        setViewTx(newTx);
+        setViewTy(newTy);
         return;
       }
 
-      if (!mySeatId) {
-        onMove(x, y);
+      // パン（zoom > 1 のとき 1本指ドラッグ）
+      if (e.touches.length === 1 && panStartRef.current && viewScaleRef.current > 1) {
+        const newTx = panStartRef.current.tx + (e.touches[0].clientX - panStartRef.current.x);
+        const newTy = panStartRef.current.ty + (e.touches[0].clientY - panStartRef.current.y);
+        viewTxRef.current = newTx;
+        viewTyRef.current = newTy;
+        setViewTx(newTx);
+        setViewTy(newTy);
       }
     },
-    [sessions, mySessionId, mySeatId, onMove, onAvatarClick, onZabutonClick, getCanvasPos]
+    []
+  );
+
+  // ─ onTouchEnd: ジェスチャー終了 / ダブルタップリセット ─
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+
+      if (isPinchingRef.current) {
+        isPinchingRef.current = false;
+        pinchStartDistRef.current = null;
+        return;
+      }
+
+      if (panStartRef.current && viewScaleRef.current > 1) {
+        panStartRef.current = null;
+        return;
+      }
+
+      // ダブルタップ → zoom リセット
+      const now = Date.now();
+      if (now - lastTapTimeRef.current < 300) {
+        viewScaleRef.current = 1;
+        viewTxRef.current    = 0;
+        viewTyRef.current    = 0;
+        setViewScale(1);
+        setViewTx(0);
+        setViewTy(0);
+        lastTapTimeRef.current = 0;
+        return;
+      }
+      lastTapTimeRef.current = now;
+    },
+    []
   );
 
   return (
@@ -146,12 +282,16 @@ export default function RoomCanvas({
       height={CANVAS_H}
       onClick={handleClick}
       onTouchStart={handleTouch}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       className="rounded-lg cursor-pointer touch-none select-none"
       style={{
         width: '100%',
         maxWidth: `${CANVAS_W}px`,
         height: 'auto',
         display: 'block',
+        transform: `translate(${viewTx}px, ${viewTy}px) scale(${viewScale})`,
+        transformOrigin: '0 0',
       }}
     />
   );
