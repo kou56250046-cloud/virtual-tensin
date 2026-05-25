@@ -1,9 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AvatarUpload from './AvatarUpload';
 import { createClient } from '@/lib/supabase/client';
+import {
+  loadProfile,
+  saveProfile,
+  clearProfile,
+  dataUrlToBlob,
+  blobToDataUrl,
+} from '@/lib/profileStorage';
 
 const AVATAR_COLOR = '#8b5cf6'; // 全員統一：紫
 
@@ -14,8 +21,23 @@ export default function LoginForm() {
   const [name, setName] = useState('');
   const [avatarBlob, setAvatarBlob] = useState<Blob | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
+  const [hasStoredProfile, setHasStoredProfile] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // マウント時にlocalStorageからプロフィールを復元
+  useEffect(() => {
+    const profile = loadProfile();
+    if (profile) {
+      setName(profile.name);
+      if (profile.avatarDataUrl) {
+        setAvatarPreview(profile.avatarDataUrl);
+        setAvatarDataUrl(profile.avatarDataUrl);
+      }
+      setHasStoredProfile(true);
+    }
+  }, []);
 
   // Step 1: 合言葉確認
   const handlePassphrase = (e: React.FormEvent) => {
@@ -28,7 +50,7 @@ export default function LoginForm() {
     setStep('profile');
   };
 
-  // Step 2: プロフィール入力 → 入室
+  // Step 2: 入室
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -55,12 +77,21 @@ export default function LoginForm() {
 
       const { sessionId } = await loginRes.json();
 
-      // 写真がある場合は Supabase Storage にアップロード
-      if (avatarBlob && sessionId) {
+      // アップロードする blob を決定
+      // 新しく選択した画像があればそちらを優先、なければ保存済みを使用
+      let uploadBlob: Blob | null = avatarBlob;
+      let finalDataUrl: string | null = avatarDataUrl;
+
+      if (!uploadBlob && avatarDataUrl) {
+        // localStorageの画像を再利用
+        uploadBlob = dataUrlToBlob(avatarDataUrl);
+      }
+
+      if (uploadBlob && sessionId) {
         const supabase = createClient();
         const { error: uploadError } = await supabase.storage
           .from('avatars')
-          .upload(`${sessionId}.jpg`, avatarBlob, {
+          .upload(`${sessionId}.jpg`, uploadBlob, {
             contentType: 'image/jpeg',
             upsert: true,
           });
@@ -74,8 +105,19 @@ export default function LoginForm() {
             .from('sessions')
             .update({ avatar_url: urlData.publicUrl })
             .eq('id', sessionId);
+
+          // 新しく選んだ画像の場合は DataURL を更新
+          if (avatarBlob && !finalDataUrl) {
+            finalDataUrl = await blobToDataUrl(avatarBlob);
+          }
         }
       }
+
+      // localStorageに保存（次回ログイン時に自動復元）
+      saveProfile({
+        name: name.trim(),
+        avatarDataUrl: finalDataUrl,
+      });
 
       router.push('/room');
     } catch {
@@ -83,6 +125,16 @@ export default function LoginForm() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // プロフィールをリセット
+  const handleReset = () => {
+    clearProfile();
+    setName('');
+    setAvatarBlob(null);
+    setAvatarPreview(null);
+    setAvatarDataUrl(null);
+    setHasStoredProfile(false);
   };
 
   return (
@@ -105,6 +157,35 @@ export default function LoginForm() {
             />
           </div>
 
+          {/* 保存済みプロフィールのプレビュー */}
+          {hasStoredProfile && (
+            <div className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3">
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt=""
+                  className="w-10 h-10 rounded-full object-cover border-2 border-violet-400/60"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-violet-500 flex items-center
+                                justify-center text-white font-bold text-sm border-2 border-violet-400/60">
+                  {name.charAt(0)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate">{name}</p>
+                <p className="text-amber-200/50 text-xs">保存済みプロフィール</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="text-white/30 hover:text-white/60 text-xs transition shrink-0"
+              >
+                変更
+              </button>
+            </div>
+          )}
+
           {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
           <button
@@ -112,7 +193,7 @@ export default function LoginForm() {
             className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold
                        rounded-lg transition shadow-lg shadow-amber-600/30"
           >
-            確認
+            {hasStoredProfile ? '🙏 入室する' : '確認'}
           </button>
         </form>
       ) : (
@@ -123,9 +204,12 @@ export default function LoginForm() {
               プロフィール写真（任意）
             </label>
             <AvatarUpload
-              onUpload={(blob, preview) => {
+              onUpload={async (blob, preview) => {
                 setAvatarBlob(blob);
                 setAvatarPreview(preview);
+                // DataURLも保持（localStorage用）
+                const dataUrl = await blobToDataUrl(blob);
+                setAvatarDataUrl(dataUrl);
               }}
               previewUrl={avatarPreview}
             />
