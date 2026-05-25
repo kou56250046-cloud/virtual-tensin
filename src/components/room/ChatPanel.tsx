@@ -114,6 +114,7 @@ export default function ChatPanel({ mySessionId, myName, onNewMessage }: Props) 
           onChange={(e) => setInput(e.target.value)}
           placeholder="メッセージ..."
           maxLength={200}
+          style={{ fontSize: '16px' }}
           className="flex-1 bg-white/10 border border-white/20 rounded px-2 py-1.5
                      text-white text-xs placeholder-white/30 focus:outline-none focus:border-amber-400"
         />

@@ -218,7 +218,7 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#c49050]">
+    <div className="h-dvh flex flex-col overflow-hidden bg-[#c49050]">
       {/* ヘッダー */}
       <header className="flex items-center justify-between px-3 py-1.5 shrink-0
                          bg-[#7a5230]/90 border-b border-amber-900/40">
