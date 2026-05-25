@@ -5,6 +5,7 @@ export interface Session {
   color: string;
   x: number;
   y: number;
+  seat_id: string | null;
   last_seen: string;
   created_at: string;
 }

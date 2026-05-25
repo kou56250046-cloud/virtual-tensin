@@ -3,7 +3,7 @@ import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/server';
 
-// アバター位置の更新
+// アバター位置・avatar_url・seat_id の更新
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -16,17 +16,26 @@ export async function PATCH(
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
   }
 
-  const body = await request.json();
-  const { x, y } = body as { x: number; y: number };
+  const body = await request.json() as Record<string, unknown>;
+
+  const updateData: Record<string, unknown> = {
+    last_seen: new Date().toISOString(),
+  };
+
+  if ('x' in body && body.x !== undefined) updateData.x = body.x;
+  if ('y' in body && body.y !== undefined) updateData.y = body.y;
+  if ('avatar_url' in body) updateData.avatar_url = body.avatar_url;
+  if ('seat_id' in body) updateData.seat_id = body.seat_id;
 
   const supabase = createAdminClient();
   const { error } = await supabase
     .from('sessions')
-    .update({ x, y, last_seen: new Date().toISOString() })
+    .update(updateData)
     .eq('id', id);
 
   if (error) {
-    return NextResponse.json({ error: '位置の更新に失敗しました' }, { status: 500 });
+    console.error('session update error:', error);
+    return NextResponse.json({ error: '更新に失敗しました' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -101,10 +101,12 @@ export default function LoginForm() {
             .from('avatars')
             .getPublicUrl(`${sessionId}.jpg`);
 
-          await supabase
-            .from('sessions')
-            .update({ avatar_url: urlData.publicUrl })
-            .eq('id', sessionId);
+          // RLS バイパスのため API 経由（admin クライアント）で更新
+          await fetch(`/api/session/${sessionId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatar_url: urlData.publicUrl }),
+          });
 
           // 新しく選んだ画像の場合は DataURL を更新
           if (avatarBlob && !finalDataUrl) {
