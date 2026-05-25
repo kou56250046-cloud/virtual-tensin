@@ -22,8 +22,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { toSessionId } = body as { toSessionId: string };
 
-  const meetCode = generateMeetCode();
-  const meetLink = `https://meet.google.com/${meetCode}`;
+  // 環境変数に固定リンクがあればそれを使用、なければランダム生成
+  const meetLink = process.env.FIXED_MEET_LINK ?? `https://meet.google.com/${generateMeetCode()}`;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase

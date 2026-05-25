@@ -11,21 +11,29 @@ interface Props {
 export default function CallDialog({ target, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [meetLink, setMeetLink] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (!target) return null;
 
   const handleCall = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toSessionId: target.id }),
       });
-      const data = await res.json();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setError((errData as { error?: string }).error ?? '通話リクエストの送信に失敗しました');
+        return;
+      }
+      const data = await res.json() as { meetLink?: string };
       if (data.meetLink) setMeetLink(data.meetLink);
     } catch (e) {
       console.error(e);
+      setError('ネットワークエラーが発生しました。再度お試しください。');
     } finally {
       setLoading(false);
     }
@@ -33,6 +41,7 @@ export default function CallDialog({ target, onClose }: Props) {
 
   const handleClose = () => {
     setMeetLink(null);
+    setError(null);
     onClose();
   };
 
@@ -47,10 +56,15 @@ export default function CallDialog({ target, onClose }: Props) {
               <span className="text-amber-900 font-semibold">{target.name}</span>
               さんに話しかけますか？
             </p>
-            <p className="text-amber-800/50 text-xs mb-5">
-              Google Meet のリンクが生成されます。<br />
-              相手に通知が届きます。
+            <p className="text-amber-800/50 text-xs mb-4">
+              Google Meet のリンクを共有します。<br />
+              相手にも同じリンクへの通知が届きます。
             </p>
+            {error && (
+              <p className="text-red-600 text-xs mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                ⚠️ {error}
+              </p>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={handleClose}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Session } from '@/types';
 import { createClient } from '@/lib/supabase/client';
@@ -30,8 +30,13 @@ export default function RoomPage() {
   const [targetSession, setTargetSession] = useState<Session | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showParticipants, setShowParticipants] = useState(false);
-  const [showChat, setShowChat] = useState(false);
+  const [activeTab, setActiveTab] = useState<'room' | 'chat'>('room');
+  const [unreadCount, setUnreadCount] = useState(0);
   const [seatConfirm, setSeatConfirm] = useState<SeatConfirm | null>(null);
+
+  // activeTab を ref で保持（handleNewChatMessage クロージャから参照するため）
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   // 自分の着席状態（sessions から派生）
   const mySeatId = sessions.find((s) => s.id === me?.sessionId)?.seat_id ?? null;
@@ -44,6 +49,20 @@ export default function RoomPage() {
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // タブ切り替え（チャットタブを開いたとき未読をリセット）
+  const handleTabChange = useCallback((tab: 'room' | 'chat') => {
+    setActiveTab(tab);
+    if (tab === 'chat') setUnreadCount(0);
+  }, []);
+
+  // チャット新着通知（チャットタブが非表示のときのみトースト + 未読カウント）
+  const handleNewChatMessage = useCallback((senderName: string) => {
+    if (activeTabRef.current !== 'chat') {
+      addToast(`💬 ${senderName}さんからメッセージ`, 'info');
+      setUnreadCount((prev) => prev + 1);
+    }
+  }, [addToast]);
 
   // セッション情報取得
   useEffect(() => {
@@ -217,15 +236,6 @@ export default function RoomPage() {
             </button>
           )}
 
-          {/* チャット（モバイル用） */}
-          <button
-            onClick={() => setShowChat(!showChat)}
-            className="md:hidden px-2 py-1 bg-amber-700/60 hover:bg-amber-600/60
-                       text-amber-100 text-xs rounded transition"
-          >
-            💬
-          </button>
-
           {/* 参加者 */}
           <button
             onClick={() => setShowParticipants(!showParticipants)}
@@ -249,8 +259,9 @@ export default function RoomPage() {
 
       {/* メインエリア */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* キャンバス */}
-        <div className="flex-1 md:max-w-[900px] relative overflow-hidden md:overflow-y-auto bg-[#c49050]">
+        {/* キャンバス（モバイル: roomタブのみ表示、PC: 常時表示） */}
+        <div className={`flex-1 md:max-w-[900px] relative overflow-hidden md:overflow-y-auto bg-[#c49050]
+          ${activeTab === 'room' ? 'flex' : 'hidden md:flex'} flex-col`}>
           <RoomCanvas
             sessions={sessions}
             mySessionId={me.sessionId}
@@ -280,16 +291,59 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* チャット（PC: サイドバー、モバイル: フローティング） */}
+        {/* チャット（モバイル: chatタブのみ表示、PC: 常時サイドバー） */}
         <div className={`
-          ${showChat ? 'flex' : 'hidden md:flex'}
-          flex-col
-          w-64 md:flex-1 md:min-w-[256px]
+          ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}
+          flex-col flex-1
+          md:w-64 md:flex-none md:min-w-[256px]
           md:border-l md:border-amber-800/30
         `}>
-          <ChatPanel mySessionId={me.sessionId} myName={me.name} />
+          <ChatPanel
+            mySessionId={me.sessionId}
+            myName={me.name}
+            onNewMessage={handleNewChatMessage}
+          />
         </div>
       </div>
+
+      {/* スマホ用タブバー（PC では非表示） */}
+      <nav className="md:hidden shrink-0 flex border-t border-amber-900/40 bg-[#7a5230]/90">
+        <button
+          onClick={() => handleTabChange('room')}
+          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5
+            text-xs font-medium transition-colors
+            ${activeTab === 'room'
+              ? 'text-amber-200 bg-amber-900/40'
+              : 'text-amber-400/60'
+            }`}
+        >
+          <span className="text-base leading-none">🏛️</span>
+          <span>天心苑</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('chat')}
+          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5
+            text-xs font-medium transition-colors relative
+            ${activeTab === 'chat'
+              ? 'text-amber-200 bg-amber-900/40'
+              : 'text-amber-400/60'
+            }`}
+        >
+          <span className="text-base leading-none relative inline-block">
+            💬
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-2.5
+                min-w-[16px] h-4 px-0.5
+                bg-red-500 text-white text-[10px] font-bold
+                rounded-full flex items-center justify-center leading-none">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </span>
+          <span>チャット</span>
+        </button>
+      </nav>
 
       {/* 着席確認ダイアログ */}
       {seatConfirm && (

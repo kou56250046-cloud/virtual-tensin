@@ -7,14 +7,19 @@ import { createClient } from '@/lib/supabase/client';
 interface Props {
   mySessionId: string;
   myName: string;
+  onNewMessage?: (senderName: string) => void;
 }
 
-export default function ChatPanel({ mySessionId, myName }: Props) {
+export default function ChatPanel({ mySessionId, myName, onNewMessage }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
+
+  // onNewMessage を ref で保持して Realtime 再購読を防ぐ
+  const onNewMessageRef = useRef(onNewMessage);
+  useEffect(() => { onNewMessageRef.current = onNewMessage; }, [onNewMessage]);
 
   // 初期メッセージ取得 + リアルタイム購読
   useEffect(() => {
@@ -38,7 +43,12 @@ export default function ChatPanel({ mySessionId, myName }: Props) {
       .channel('messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
+          const newMsg = payload.new as Message;
+          setMessages((prev) => [...prev, newMsg]);
+          // 自分以外のメッセージのとき通知コールバックを呼ぶ
+          if (newMsg.session_id !== mySessionId) {
+            onNewMessageRef.current?.(newMsg.sender_name);
+          }
         }
       )
       .subscribe();
