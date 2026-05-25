@@ -146,8 +146,13 @@ export default function RoomCanvas({
       height={CANVAS_H}
       onClick={handleClick}
       onTouchStart={handleTouch}
-      className="w-full h-full rounded-lg cursor-pointer touch-none select-none"
-      style={{ maxHeight: 'calc(100vh - 56px)' }}
+      className="rounded-lg cursor-pointer touch-none select-none"
+      style={{
+        width: '100%',
+        height: 'auto',
+        maxHeight: 'calc(100vh - 56px)',
+        display: 'block',
+      }}
     />
   );
 }
@@ -185,7 +190,7 @@ function drawRoom(ctx: CanvasRenderingContext2D, onLoad: () => void) {
   // ③ 中央通路ハイライト（座布団エリアとの差別化）
   ctx.save();
   ctx.fillStyle = 'rgba(240, 210, 155, 0.20)';
-  ctx.fillRect(315, 215, 270, H - 215);
+  ctx.fillRect(300, 215, 300, H - 215);
   ctx.restore();
 
   // ④ 壁エリア（オフホワイト）
@@ -242,20 +247,9 @@ function drawRoom(ctx: CanvasRenderingContext2D, onLoad: () => void) {
 // ─── 御真影（写真＋金額縁） ───────────────────────────────
 
 function drawAltarWithImages(ctx: CanvasRenderingContext2D, onLoad: () => void) {
-  // 白石彫刻（左）
-  const sculpt = getCachedImage('/portraits/sculpture.png');
-  if (sculpt) {
-    drawSculptureImg(ctx, 100, 122, 84, 62, sculpt);
-  } else {
-    drawSculptureFallback(ctx, 100, 122, 84, 62);
-    loadImage('/portraits/sculpture.png', onLoad);
-  }
-  // 白石彫刻（右）
-  if (sculpt) {
-    drawSculptureImg(ctx, 800, 122, 84, 62, sculpt);
-  } else {
-    drawSculptureFallback(ctx, 800, 122, 84, 62);
-  }
+  // 天心苑建物アイコン（左右）
+  drawTenshinenBuilding(ctx, 100, 112);
+  drawTenshinenBuilding(ctx, 800, 112);
 
   // left_1（小・左）
   const img1 = getCachedImage('/portraits/left_1.png');
@@ -314,39 +308,52 @@ function drawPortraitPlaceholder(
   ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
 }
 
-/** 白石彫刻（写真） */
-function drawSculptureImg(
-  ctx: CanvasRenderingContext2D,
-  cx: number, cy: number,
-  w: number, h: number,
-  img: HTMLImageElement
-) {
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.2)';
-  ctx.shadowBlur = 5;
-  ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
-  ctx.restore();
-}
+/** 天心苑建物アイコン（Canvas描画） */
+function drawTenshinenBuilding(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
+  const bw = 72, bh = 58;
+  const bx = cx - bw / 2, by = cy - bh / 2;
 
-/** 白石彫刻フォールバック */
-function drawSculptureFallback(
-  ctx: CanvasRenderingContext2D,
-  cx: number, cy: number,
-  w: number, h: number
-) {
-  ctx.fillStyle = '#f0ede8';
-  ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 4);
-  else ctx.rect(cx - w / 2, cy - h / 2, w, h);
-  ctx.fill();
+  // ベース（茶色）
+  ctx.fillStyle = '#8B5E3C';
+  ctx.fillRect(bx, by + bh - 8, bw, 8);
+
+  // 壁（クリーム）
+  ctx.fillStyle = '#f5f0e8';
+  ctx.fillRect(bx + 4, by + 18, bw - 8, bh - 26);
   ctx.strokeStyle = '#c8b89a';
   ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 4, by + 18, bw - 8, bh - 26);
+
+  // アーチ窓 × 2
+  ctx.fillStyle = '#7a5230';
+  ([
+    [bx + 14, by + bh - 20],
+    [bx + bw - 30, by + bh - 20],
+  ] as [number, number][]).forEach(([wx, wy]) => {
+    ctx.fillRect(wx, wy, 12, 12);
+    ctx.beginPath();
+    ctx.arc(wx + 6, wy, 6, Math.PI, 0);
+    ctx.fill();
+  });
+
+  // 屋根（三角・ゴールド）
+  ctx.beginPath();
+  ctx.moveTo(bx, by + 20);
+  ctx.lineTo(cx, by);
+  ctx.lineTo(bx + bw, by + 20);
+  ctx.closePath();
+  ctx.fillStyle = '#e8d060';
+  ctx.fill();
+  ctx.strokeStyle = '#c8a832';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
-  ctx.fillStyle = '#8B5E3C';
+
+  // テキスト「天心苑」
+  ctx.fillStyle = '#7a5230';
   ctx.font = 'bold 9px sans-serif';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('天心苑', cx, cy);
+  ctx.textBaseline = 'top';
+  ctx.fillText('天心苑', cx, by + 22);
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -380,6 +387,57 @@ function drawCandle(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.arc(x, y - 12, 10, 0, Math.PI * 2);
   ctx.fillStyle = grd;
   ctx.fill();
+}
+
+// ─────────────────────────────────────────────────────────
+// 着席アバター描画（クッション内に収まるよう最適化）
+// ─────────────────────────────────────────────────────────
+
+function drawSeatedAvatar(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  img: HTMLImageElement | null,
+  name: string, color: string,
+  r: number
+) {
+  ctx.save();
+
+  // 白ボーダー
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  if (img) {
+    // 写真（丸クリップ）
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+  } else {
+    // 色円 + 頭文字
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.font = `bold ${Math.round(r * 0.9)}px sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name.charAt(0) || '?', cx, cy);
+  }
+
+  ctx.restore();
+
+  // 小さい名前テキスト（クッション内下部）
+  const label = name.length > 5 ? name.slice(0, 4) + '…' : name;
+  ctx.font = '9px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(label, cx, cy + r + 2);
+  ctx.textBaseline = 'alphabetic';
 }
 
 // ─────────────────────────────────────────────────────────
@@ -450,18 +508,18 @@ function drawZabutonArea(
       // 着席中：クッション上に小アバター
       if (occupant) {
         const cx2 = x + w / 2;
-        const cy2 = y + h / 2;
-        const r2 = Math.min(w, h) / 2 - 3;
+        const cy2 = y + h * 0.42; // 名前ラベル分を考慮して少し上
+        const r2 = Math.min(Math.min(w, h) / 2 - 3, 14); // 最大14px
         if (occupant.avatar_url) {
           const cached = getCachedImage(occupant.avatar_url);
           if (cached) {
-            drawAvatarWithPhoto(ctx, cx2, cy2, cached, occupant.name, r2, false);
+            drawSeatedAvatar(ctx, cx2, cy2, cached, occupant.name, occupant.color, r2);
           } else {
-            drawAvatarInitial(ctx, cx2, cy2, occupant.name, occupant.color, r2, false);
+            drawSeatedAvatar(ctx, cx2, cy2, null, occupant.name, occupant.color, r2);
             loadImage(occupant.avatar_url, onLoad);
           }
         } else {
-          drawAvatarInitial(ctx, cx2, cy2, occupant.name, occupant.color, r2, false);
+          drawSeatedAvatar(ctx, cx2, cy2, null, occupant.name, occupant.color, r2);
         }
       }
     }

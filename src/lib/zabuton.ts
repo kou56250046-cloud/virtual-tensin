@@ -3,21 +3,21 @@
  */
 
 export const ZABUTON_LEFT = {
-  startX: 8,
+  startX: 0,
   startY: 218,
-  areaW: 278,
+  areaW: 300,
   areaH: 412,
-  cols: 6,
-  rows: 8,
+  cols: 4,
+  rows: 6,
 } as const;
 
 export const ZABUTON_RIGHT = {
-  startX: 614,
+  startX: 600,
   startY: 218,
-  areaW: 278,
+  areaW: 300,
   areaH: 412,
-  cols: 6,
-  rows: 8,
+  cols: 4,
+  rows: 6,
 } as const;
 
 /** seat_id の center 座標を返す */
