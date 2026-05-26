@@ -57,7 +57,7 @@ export default function CallDialog({ target, onClose }: Props) {
               さんに話しかけますか？
             </p>
             <p className="text-amber-800/50 text-xs mb-4">
-              Google Meet のリンクを共有します。<br />
+              Jitsi Meet のリンクを共有します（アカウント不要）。<br />
               相手にも同じリンクへの通知が届きます。
             </p>
             {error && (
@@ -85,7 +85,7 @@ export default function CallDialog({ target, onClose }: Props) {
           </>
         ) : (
           <>
-            <h2 className="text-green-700 font-bold text-lg mb-2">✅ Meet リンク生成完了</h2>
+            <h2 className="text-green-700 font-bold text-lg mb-2">✅ 通話リンク生成完了</h2>
             <p className="text-amber-900/70 text-sm mb-4">
               {target.name}さんに通知を送りました。
               下のボタンから Meet に参加してください。
@@ -97,7 +97,7 @@ export default function CallDialog({ target, onClose }: Props) {
               className="block w-full py-3 bg-green-600 hover:bg-green-500 text-white font-bold
                          rounded-lg transition text-center mb-3 text-sm"
             >
-              🎥 Google Meet に参加
+              🎤 Jitsi Meet で話す
             </a>
             <p className="text-amber-800/30 text-xs text-center mb-3 break-all">{meetLink}</p>
             <button

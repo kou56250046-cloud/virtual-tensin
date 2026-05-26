@@ -3,11 +3,9 @@ import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/server';
 
-function generateMeetCode(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
-  const seg = (n: number) =>
-    Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `${seg(3)}-${seg(4)}-${seg(3)}`;
+function generateRoomId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
 // 通話リクエスト作成
@@ -23,7 +21,7 @@ export async function POST(request: NextRequest) {
   const { toSessionId } = body as { toSessionId: string };
 
   // 環境変数に固定リンクがあればそれを使用、なければランダム生成
-  const meetLink = process.env.FIXED_MEET_LINK ?? `https://meet.google.com/${generateMeetCode()}`;
+  const meetLink = process.env.FIXED_MEET_LINK ?? `https://meet.jit.si/tensinen-${generateRoomId()}`;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase

@@ -408,8 +408,8 @@ function drawAltarWithImages(ctx: CanvasRenderingContext2D, onLoad: () => void) 
 
   // left_4（小・右）
   const img4 = getCachedImage('/portraits/left_4.png');
-  if (img4) drawPortrait(ctx, 618, 81, 62, 86, img4);
-  else { drawPortraitPlaceholder(ctx, 618, 81, 62, 86); loadImage('/portraits/left_4.png', onLoad); }
+  if (img4) drawPortrait(ctx, 552, 81, 62, 86, img4);
+  else { drawPortraitPlaceholder(ctx, 552, 81, 62, 86); loadImage('/portraits/left_4.png', onLoad); }
 
   // 花（中央下）
   ctx.save();
