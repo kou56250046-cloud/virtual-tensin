@@ -1,301 +1,254 @@
-# プロジェクト設定
+# プロジェクト設定（最終更新: 2026-05-26）
 
-## スタック
+## 現在の実装スタック
 
-このプロジェクトは以下のスタックで構築します：
+| レイヤー | 採用技術 | バージョン |
+|---------|----------|-----------|
+| フレームワーク | Next.js (App Router) | 16.2.6 |
+| UI ランタイム | React | 19.2.4 |
+| スタイリング | Tailwind CSS | v4 |
+| 認証 | iron-session（合言葉 + Cookie） | ^8.0.4 |
+| DB / Realtime | Supabase (`@supabase/supabase-js`, `@supabase/ssr`) | ^2.106.1 |
+| 画像ストレージ | Supabase Storage（`avatars` バケット） | — |
+| デプロイ | Vercel | — |
+| 言語 | TypeScript (strict) | ^5 |
 
-- **フレームワーク**: Next.js 15 (App Router)
-- **データベース**: Supabase (PostgreSQL)
-- **認証**: NextAuth.js v5 + Google OAuth
-- **ストレージ**: Cloudflare R2
-- **決済**: Stripe
-- **デプロイ**: Vercel
-- **バージョン管理**: GitHub
+---
 
-## 利用可能な MCP ツール
+## 開発コマンド
 
-| サービス | MCP | 用途 |
-|---------|-----|------|
-| Supabase | `mcp__supabase__*` | DB操作・マイグレーション・Edge Functions |
-| Cloudflare | `mcp__cloudflare__*` | R2ストレージ・Workers |
-| Stripe | `mcp__stripe__*` | 商品・価格・サブスクリプション管理 |
-| GitHub | `mcp__github__*` | リポジトリ・PR・Issue管理 |
-| Vercel | `mcp__vercel__*` | デプロイ・環境変数管理 |
-| Gemini | `mcp__gemini__*` | AI機能 |
+```bash
+npm run dev        # 開発サーバー起動 (localhost:3000)
+npm run build      # プロダクションビルド
+npm run start      # プロダクション起動
+npx tsc --noEmit   # TypeScript 型チェック
+```
 
-## 自動セットアップ手順
+---
 
-このプロジェクトが空の場合、以下の手順で初期化を行います：
+## アーキテクチャ概観
 
-1. `npx create-next-app@latest . --typescript --tailwind --app --src-dir --import-alias "@/*"` を実行
-2. 必要なパッケージをインストール:
-   - `@supabase/supabase-js @supabase/ssr`
-   - `next-auth@beta @auth/supabase-adapter`
-   - `@aws-sdk/client-s3` (R2アクセス用)
-   - `stripe @stripe/stripe-js`
-3. Supabase プロジェクトをMCPで作成・設定
-4. GitHub リポジトリをMCPで作成・接続
-5. Vercel プロジェクトをMCPで作成・設定
-6. 環境変数ファイル (`.env.local`) を生成
-7. Stripe 商品・価格をMCPで設定
+```
+src/
+├── proxy.ts                        # 認証ガード（Next.js 16 の proxy 関数）
+├── app/
+│   ├── page.tsx                    # ログイン画面（木目背景・蝋燭グロー）
+│   ├── room/page.tsx               # 祈祷室メイン（要認証）
+│   └── api/
+│       ├── auth/login/             # POST: 合言葉照合 → iron-session Cookie 発行 + sessions INSERT
+│       ├── auth/logout/            # POST: Cookie 削除 + sessions DELETE
+│       ├── auth/me/                # GET: 現在のセッション情報
+│       ├── session/[id]/           # PATCH: 位置・avatar_url・seat_id 更新
+│       │                           # PUT:   ハートビート（last_seen 更新）
+│       ├── call/                   # POST: Google Meet 固定リンク取得 + call_requests INSERT
+│       │                           # PATCH: 通話応答（accepted / rejected）
+│       └── messages/cleanup/       # POST: 8時間以上古いメッセージを削除
+├── components/
+│   ├── login/
+│   │   ├── LoginForm.tsx           # 2ステップ入室フォーム（合言葉 → プロフィール）
+│   │   └── AvatarUpload.tsx        # 写真アップロード UI（カメラ/ギャラリー対応）
+│   └── room/
+│       ├── RoomCanvas.tsx          # Canvas メイン（背景描画・アバター・座布団・ズーム/パン）
+│       ├── ChatPanel.tsx           # チャットサイドパネル（Supabase Realtime）
+│       ├── CallDialog.tsx          # 話しかける → Google Meet 固定リンク共有
+│       └── ToastNotification.tsx   # 入退室・通話通知（4秒で自動消去）
+├── lib/
+│   ├── session.ts                  # iron-session 設定（SessionData 型・cookieName: tensinen-session）
+│   ├── imageResize.ts              # 画像を 200×200px/JPEG0.75 にリサイズ（クライアント側）
+│   ├── profileStorage.ts           # localStorage でプロフィール永続保存
+│   ├── zabuton.ts                  # 座布団グリッド定数・座標計算ユーティリティ
+│   ├── supabase/client.ts          # ブラウザ用 Supabase クライアント
+│   ├── supabase/server.ts          # SSR 用 Supabase + createAdminClient()
+│   └── avatars/shapes.ts           # 丸形写真アバター描画（画像キャッシュ付き）
+└── types/index.ts                  # Session / Message / CallRequest 型
+```
 
-## 環境変数テンプレート
+---
 
-```.env.local
-# Supabase
+## Supabase テーブル（現在の実装）
+
+> `supabase/migrations/001_initial_schema.sql` は初期版。実際の DB は以下のカラムを持つ。
+
+### `sessions`
+| カラム | 型 | 備考 |
+|-------|----|------|
+| id | UUID PK | gen_random_uuid() |
+| name | TEXT | 表示名（必須） |
+| avatar_url | TEXT \| null | Supabase Storage の公開 URL |
+| color | TEXT | `#8b5cf6`（紫で全員統一） |
+| x | FLOAT | Canvas 上の X 座標 |
+| y | FLOAT | Canvas 上の Y 座標 |
+| seat_id | TEXT \| null | `L-行-列` or `R-行-列`（着席中のみ） |
+| last_seen | TIMESTAMPTZ | 30秒毎ハートビートで更新 |
+| created_at | TIMESTAMPTZ | — |
+
+### `messages`
+| カラム | 型 | 備考 |
+|-------|----|------|
+| id | UUID PK | — |
+| session_id | UUID \| null | sessions(id) ON DELETE SET NULL |
+| sender_name | TEXT | — |
+| content | TEXT | 最大200文字 |
+| created_at | TIMESTAMPTZ | — |
+
+### `call_requests`
+| カラム | 型 | 備考 |
+|-------|----|------|
+| id | UUID PK | — |
+| from_session_id | UUID | sessions(id) ON DELETE CASCADE |
+| to_session_id | UUID | sessions(id) ON DELETE CASCADE |
+| meet_link | TEXT \| null | Google Meet 固定リンク（FIXED_MEET_LINK） |
+| status | TEXT | `pending / accepted / rejected / expired` |
+| created_at | TIMESTAMPTZ | — |
+
+全テーブルで **RLS 有効**。API Route 内は `createAdminClient()` で Service Role キーを使用。
+
+---
+
+## 座布団グリッド仕様（zabuton.ts）
+
+```
+CANVAS: 900 × 1280 px
+
+ZABUTON_LEFT:  x=0,   y=218, w=300, h=1040, cols=4, rows=9  → 36席
+ZABUTON_RIGHT: x=600, y=218, w=300, h=1040, cols=4, rows=9  → 36席
+合計: 72席
+
+seat_id 形式: L-{row}-{col} または R-{row}-{col}
+```
+
+- 空席クリック → 着席確認ダイアログ → `PATCH /api/session/:id` で `seat_id` 更新
+- 着席中の座布団クリック（他人） → 話しかけるダイアログ
+- 自分の座布団クリック or ヘッダー「離席」ボタン → `seat_id: null` に更新
+
+---
+
+## アバターシステム
+
+| 状態 | 描画方法 |
+|------|---------|
+| 写真あり（非着席） | 丸クリップ写真 + 名前ラベル（AVATAR_RADIUS=24px） |
+| 写真なし（非着席） | イニシャル入り色円 + 名前ラベル |
+| 着席中（写真あり） | 座布団上に小アバター（最大14px）+ 短縮名 |
+| 着席中（写真なし） | 色円＋イニシャル（座布団上）|
+| 自分（選択状態） | 金色リング表示 |
+
+写真は `Supabase Storage avatars/{sessionId}.jpg`（200×200px/JPEG0.75 に圧縮済み）。  
+プロフィールは `localStorage` の `tensinen_profile` キーに永続保存。次回ログイン時に自動復元。
+
+---
+
+## ピンチズーム / パン（RoomCanvas.tsx）
+
+| 操作 | 動作 |
+|------|------|
+| 2本指ピンチ | ズーム 1〜4倍（中心点固定） |
+| ズーム中に1本指ドラッグ | パン |
+| ダブルタップ | ズームリセット（scale=1, tx/ty=0） |
+
+CSS `transform: translate(tx, ty) scale(scale)` で実装。`transformOrigin: '0 0'`。
+
+---
+
+## 認証フロー
+
+```
+Step1: 合言葉入力（フロントエンド）
+  → localStorage にプロフィールがあればプレビュー表示・ワンタップ入室
+
+Step2: プロフィール設定（名前 + 写真）
+  → POST /api/auth/login
+    - ACCESS_PASSPHRASE 環境変数と照合
+    - sessions INSERT（初期座標: x=400±100, y=350±75）
+    - iron-session Cookie 発行（24時間有効）
+  → 写真があれば Supabase Storage にアップロード → PATCH で avatar_url 更新
+  → /room にリダイレクト
+```
+
+合言葉変更: Vercel ダッシュボード → Environment Variables → `ACCESS_PASSPHRASE` を更新 → 再デプロイ。
+
+---
+
+## リアルタイム同期
+
+| チャンネル | テーブル | イベント | 処理 |
+|-----------|---------|---------|------|
+| `sessions-realtime` | sessions | INSERT | 他者入室 → トースト |
+| `sessions-realtime` | sessions | UPDATE | アバター位置・座布団状態を即座に反映 |
+| `sessions-realtime` | sessions | DELETE | 退室 → トースト |
+| `call-realtime` | call_requests | INSERT (to_session_id=自分) | 通話通知トースト |
+| `messages` | messages | INSERT | チャットに追加 |
+
+ハートビート: 30秒毎に `PUT /api/session/:id`（`last_seen` 更新）。
+
+---
+
+## チャット仕様
+
+- 過去8時間以内のメッセージを取得（最大200件）
+- ChatPanel マウント時に `POST /api/messages/cleanup` でバックグラウンド削除
+- 最大文字数: 200文字
+- 自分のメッセージ: 右寄せ（amber背景）、他者: 左寄せ（white/10背景）
+- 入力欄フォーカス時に最新メッセージへ自動スクロール（`requestAnimationFrame` + `behavior: auto`）
+
+---
+
+## 通話仕様（call/route.ts）
+
+- `FIXED_MEET_LINK` 環境変数（Vercel 設定）の Google Meet 固定リンクを使用
+- 未設定時はエラーを返す（ランダム生成なし）
+- 固定リンクのため何人でも同じルームに途中参加可能
+- 話しかけた相手へ Supabase Realtime で通知（call_requests INSERT イベント）
+
+---
+
+## 御真影・背景描画（RoomCanvas.tsx）
+
+| 要素 | 描画方法 |
+|------|---------|
+| 床 | 木目グラデーション（`#e8c98a`→`#c49050`） |
+| 天井 | オフホワイト (`#f8f4ee`) + コーファードパネル |
+| 祭壇台 | ブラウン系グラデーション |
+| 柱 | 左右2本（Canvas グラデーション） |
+| 御真影 | `/portraits/left_1〜left_4.png`（金額縁付き）|
+| 建物アイコン | Canvas 描画（三角屋根・金色 + 「天心苑」テキスト）|
+| 蝋燭 | 8本（炎グロー付き） |
+| 花 | 🌸 cx=450（キャンバス中央） |
+| 中央通路 | 透明ハイライト |
+
+### 御真影の座標（cx, cy, w, h）
+
+| 御真影 | cx | cy | w | h | 備考 |
+|--------|----|----|---|---|------|
+| left_1 | 270 | 82 | 66 | 90 | 小・左 |
+| left_2 | 352 | 81 | 62 | 87 | 小・左寄り |
+| left_3 | 450 | 75 | 106 | 136 | 大・中央（花 cx=450 と同位置） |
+| left_4 | 552 | 81 | 62 | 86 | 小・右（left_3 との隙間 8px） |
+
+フレーム幅 fw=5px、フレーム色 `#c8a832`（ゴールド）。
+
+---
+
+## 環境変数
+
+```env
+ACCESS_PASSPHRASE=          # 合言葉（Vercel 環境変数で管理）
+SESSION_SECRET=             # 32文字以上のランダム文字列
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-
-# NextAuth / Google OAuth
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# Cloudflare R2
-CLOUDFLARE_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
-R2_PUBLIC_URL=
-
-# Stripe
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-
-# Gemini API
-GEMINI_API_KEY=
-
-# Vercel
-VERCEL_TOKEN=
-```
-
-## コーディング規約
-
-- TypeScript strict モード
-- Tailwind CSS でスタイリング
-- Server Components を優先、Client Components は最小限
-- Supabase の RLS (Row Level Security) を必ず有効化
-- API キーは環境変数で管理、コードに埋め込み禁止
-- エラーハンドリングは Result 型パターンを推奨
-
-## MCPを使った開発フロー
-
-```
-ユーザー要求
-  → GitHub MCP でブランチ作成
-  → コード実装
-  → Supabase MCP でマイグレーション適用
-  → GitHub MCP でPR作成
-  → Vercel MCP でプレビューデプロイ確認
-  → マージ → 本番デプロイ
+FIXED_MEET_LINK=            # Google Meet 固定リンク（必須・未設定時は通話エラー）
 ```
 
 ---
 
-# バーチャル天心苑祈祷室 要件定義書
-
-作成日: 2026年5月24日
-
----
-
-## 1. プロジェクト概要
-
-### 1.1 背景
-
-天心苑祈祷会は毎日平日の22:00〜25:00に開催されている。現在は教会が使用できないため、参加者それぞれがYouTubeのライブリンクを個別に視聴している状況である。
-
-教会が使用できていた頃は、皆で教会の祈祷室に集まり、大画面で一緒にYouTubeライブを視聴していた。
-
-教会が使えない現在も、バーチャル空間で皆が一緒に祈祷会に参加している感覚を再現するため、本システム「バーチャル天心苑祈祷室」を構築する。
-
-### 1.2 目的
-
-- 各自が自宅でYouTubeライブを視聴しつつ、バーチャル空間で「皆と一緒にいる」存在感を共有する
-- 祈祷会の前後で、自然に交流できる場を提供する
-- 教会に集まれない期間も、信仰生活の共同体感覚を保つ
-
-### 1.3 利用シーン
-
-平日 22:00〜25:00 の祈祷会時間中。各参加者は携帯またはPCでYouTubeライブを開いて視聴しながら、同時にバーチャル祈祷室にもログインし、空間内でアバターとして他の参加者の存在を感じながら過ごす。話したくなった時は、相手のアバターをタップして個別に通話を開始できる。
-
----
-
-## 2. 基本方針
-
-### 2.1 設計思想
-
-- 祈祷会の静謐な雰囲気を最優先する。にぎやかな機能は持ち込まない
-- 「常時接続の音声会話」ではなく、「存在感の共有 + 必要時の個別通話」というモデル
-- シンプル・最小機能で開始し、必要に応じて拡張する
-- 完全無料運用を維持する
-
-### 2.2 運用方針
-
-- YouTubeライブは各自が個別に開く（システムには組み込まない）
-- 音声会話はGoogle Meetなど外部サービスに委任する（システム自体は音声を扱わない）
-- 会員限定（合言葉を知る人のみアクセス可能）
-
----
-
-## 3. 機能要件
-
-### 3.1 認証・入室
-
-| 項目 | 内容 |
-|------|------|
-| 認証方式 | 管理者が発行した合言葉（パスワード）による認証 |
-| 名前入力 | 合言葉通過後、参加者は自分の名前を入力（アバターに表示される） |
-| 合言葉の管理 | 管理者が変更可能。漏洩時に再発行できる仕組み |
-| 対応デバイス | PC・スマートフォン（モバイル必須） |
-
-### 3.2 バーチャル空間
-
-| 項目 | 内容 |
-|------|------|
-| 視点 | 俯瞰見下ろし（oVice風のバーチャル空間と同じ視点） |
-| デザイントーン | 静謐な紺×金。夜の祈祷会らしい厳かな雰囲気 |
-| 空間構成 | 祭壇エリア（御真影・蝋燭を上から見た形で配置）+ 参加者が集まれる広い空間 |
-| 参考画像 | 天心苑祈祷室の正面写真（御真影・白い蝋燭・木目の祭壇）を参考にデザイン |
-
-### 3.3 アバター
-
-| 項目 | 内容 |
-|------|------|
-| 見た目 | 人型のシルエット（俯瞰画像に合わせた上から見た姿） |
-| 色 | 参加者が自分で色を選べる（他者との識別を容易にするため） |
-| 名前表示 | アバターの近くに名前を表示 |
-| 移動 | 空間内を自由に移動可能（クリック/タップ操作） |
-| 位置同期 | 他参加者のアバター位置はリアルタイムで反映される |
-
-### 3.4 話しかけ機能（通話開始）
-
-| 項目 | 内容 |
-|------|------|
-| 基本操作 | 他参加者のアバターをタップして「話しかける」アクション |
-| 通話手段 | Google Meet（新規ミーティングリンクを自動生成） |
-| 開始フロー | ①AさんがBさんに話しかける → ②Bさんに通知 → ③Bさん承諾でMeetリンクが両者に共有 → ④両者が同じMeetルームに入って通話 |
-| 人数拡張 | 1対1で始まり、招待で人数を拡張可能（Cさんを招待など） |
-| 拒否 | 受け手は応答しない選択も可能（無視/拒否） |
-
-### 3.5 テキストチャット
-
-- 全体チャット（空間内の全員が見られる）を実装
-- 画面の一部（サイドパネルまたは下部）に表示
-- 祈祷前後のちょっとした連絡や挨拶用
-
-### 3.6 通知
-
-画面上に以下のイベントを通知する。
-
-- 入室通知：「○○さんが入室しました」
-- 退室通知：「○○さんが退室しました」
-- 話しかけ通知：「○○さんから話しかけられています」
-- チャット通知：新しいメッセージ
-
-### 3.7 退室
-
-- 退室ボタンで明示的に退室
-- ブラウザを閉じた場合も自動で退室扱いになる
-
----
-
-## 4. 非機能要件
-
-| 項目 | 内容 |
-|------|------|
-| 同時接続数 | 50人以上（目標） |
-| 対応デバイス | PC（モダンブラウザ）・スマートフォン（iOS Safari / Android Chrome） |
-| 運用コスト | 完全無料（各サービスの無料枠内で運用） |
-| 稼働時間 | 基本的に24時間稼働（メイン利用は平日22:00〜25:00） |
-| セキュリティ | 合言葉によるアクセス制御。SSL/HTTPS必須 |
-| プライバシー | 個人情報は名前のみ。メールアドレス等は収集しない |
-
----
-
-## 5. 技術構成
-
-### 5.1 構成概要
-
-| レイヤー | 採用技術 | 無料枠/備考 |
-|----------|----------|-------------|
-| ホスティング | Cloudflare Pages | 完全無料・帯域無制限 |
-| フロントエンド | HTML + JavaScript（必要に応じてフレームワーク） | Canvas/SVGで描画 |
-| バックエンド/DB | Supabase（認証・リアルタイム同期・データ保存） | 無料枠で50人規模は十分 |
-| リアルタイム通信 | Supabase Realtime（WebSocket） | アバター位置・チャット・通知に使用 |
-| 音声通話 | Google Meet（外部委任） | Googleアカウントがあれば無料でルーム生成可 |
-
-### 5.2 無料運用の根拠
-
-本システムは音声・動画通信を一切扱わないため、サーバー負荷の大半を占める通信処理が発生しない。Supabaseの無料枠（月間アクティブユーザー50,000人、データベース500MB、リアルタイム同時接続200本）とCloudflare Pagesの無料枠（帯域無制限）で、50人規模の運用は十分にカバーできる。
-
-音声会話はGoogle Meetに完全委任することで、参加者が各自のGoogleアカウントの無料枠を使う形となり、システム側の課金は一切発生しない。
-
----
-
-## 6. 画面構成
-
-### 6.1 ログイン画面
-
-- 合言葉入力フォーム
-- 名前入力フォーム
-- アバターの色選択
-- 「入室」ボタン
-
-### 6.2 メイン画面（祈祷室）
-
-- 中央：バーチャル祈祷室（俯瞰図）+ アバター表示
-- サイドまたは下部：全体テキストチャット
-- 画面上部：現在の参加者一覧（リスト）
-- 画面右上：設定・退室ボタン
-- 通知：画面右上にトースト表示
-
-### 6.3 話しかけダイアログ
-
-- 「○○さんに話しかけますか？」確認
-- 送信 → 相手への通知 → 相手の承諾でMeetリンク共有
-
----
-
-## 7. 開発の進め方
-
-### 7.1 開発フェーズ
-
-| フェーズ | 内容 | 成果物 |
-|----------|------|--------|
-| Phase 1 | MVP（最小機能版） | 合言葉認証・名前入力・アバター表示・自由移動・位置同期 |
-| Phase 2 | コミュニケーション機能 | テキストチャット・入退室通知・話しかけ機能（Google Meet連携） |
-| Phase 3 | デザイン仕上げ | 祭壇エリアの描画・紺×金トーン・アバターデザイン洗練 |
-| Phase 4 | 運用準備 | 管理者画面（合言葉変更等）・実際にデプロイ・テスト運用 |
-
-### 7.2 開発体制
-
-- 実装はClaudeが主導（コード生成・修正）
-- 運用・テストはご相談者様が担当
-- デプロイ作業もClaudeがガイドしながら一緒に進める
-
----
-
-## 8. 今後の検討事項
-
-以下は今後の運用で必要に応じて検討する項目である。
-
-- 管理者画面（合言葉の変更、参加者の管理、不適切な利用者の追放など）
-- 祈祷会以外の時間帯の利用ルール
-- 複数人での「集まり型」通話（Phase 2以降で必要に応じて）
-- 祈祷リクエストの掲示板など追加機能
-- 利用ログ・参加者数の統計
-
----
-
-## 9. 準備事項
-
-実装開始前にご準備いただきたいもの。
-
-- Cloudflareアカウント（無料登録）
-- Supabaseアカウント（無料登録）
-- 管理者用のGoogleアカウント（Meet生成用）
-- 初期の合言葉（運営者で決定）
-- ドメイン名（任意。Cloudflareの無料サブドメインでも可）
+## 重要な実装メモ
+
+- **proxy.ts**: Next.js 16 では `middleware` ではなく `proxy` ファイル名・関数名
+- **iron-session**: `getIronSession<SessionData>(request, res, options)` でジェネリクス必須
+- **Supabase 二重クライアント**: API Route → `createAdminClient()`、Client Component → `createClient()`
+- **アバター位置同期**: ローカル即時反映 → PATCH API でDB更新 → Realtime で他者に反映
+- **character_type は廃止**: 初期 migration にカラムがあるが実装では未使用（写真アバターに移行）
+- **全員カラー統一**: `#8b5cf6`（紫）。個別カラー選択は廃止
+- **seat_id は migration 未定義**: 現行 DB には追加カラムあり（migration と乖離）
+- **FIXED_MEET_LINK 必須**: ランダム生成は廃止。未設定時は通話ボタン押下でエラーメッセージ表示
