@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Message } from '@/types';
 import { createClient } from '@/lib/supabase/client';
 
@@ -16,6 +16,12 @@ export default function ChatPanel({ mySessionId, myName, onNewMessage }: Props) 
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
+
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+    });
+  }, []);
 
   // onNewMessage を ref で保持して Realtime 再購読を防ぐ
   const onNewMessageRef = useRef(onNewMessage);
@@ -58,8 +64,8 @@ export default function ChatPanel({ mySessionId, myName, onNewMessage }: Props) 
 
   // 新メッセージで自動スクロール
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +118,7 @@ export default function ChatPanel({ mySessionId, myName, onNewMessage }: Props) 
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onFocus={scrollToBottom}
           placeholder="メッセージ..."
           maxLength={200}
           style={{ fontSize: '16px' }}

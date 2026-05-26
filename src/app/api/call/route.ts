@@ -3,11 +3,6 @@ import { getIronSession } from 'iron-session';
 import { sessionOptions, SessionData } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/server';
 
-function generateRoomId(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
-
 // 通話リクエスト作成
 export async function POST(request: NextRequest) {
   const res = NextResponse.json({});
@@ -20,8 +15,11 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { toSessionId } = body as { toSessionId: string };
 
-  // 環境変数に固定リンクがあればそれを使用、なければランダム生成
-  const meetLink = process.env.FIXED_MEET_LINK ?? `https://meet.jit.si/tensinen-${generateRoomId()}`;
+  // FIXED_MEET_LINK 環境変数（Google Meet 固定リンク）を使用
+  const meetLink = process.env.FIXED_MEET_LINK;
+  if (!meetLink) {
+    return NextResponse.json({ error: '通話リンクが設定されていません。管理者にお問い合わせください。' }, { status: 500 });
+  }
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
