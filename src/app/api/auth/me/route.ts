@@ -16,5 +16,6 @@ export async function GET(request: NextRequest) {
     name: session.name,
     avatarUrl: session.avatarUrl ?? null,
     color: session.color,
+    sessionCreatedAt: session.sessionCreatedAt ?? null,
   });
 }

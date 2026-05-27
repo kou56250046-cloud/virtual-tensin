@@ -16,6 +16,9 @@ export interface Message {
   sender_name: string;
   content: string;
   created_at: string;
+  read_by: string[];
+  reactions: Record<string, string[]>; // { "👍": ["sessionId1", ...] }
+  sender_avatar_url: string | null;
 }
 
 export interface CallRequest {

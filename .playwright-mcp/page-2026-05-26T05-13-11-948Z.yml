@@ -1,0 +1,10 @@
+- main [ref=e2]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - img [ref=e8]
+      - generic [ref=e9]: Video Conferencing
+      - generic [ref=e10]: The best video conferencing solution for businesses of any size. Fully secure, reliable, packed with features and ridiculously simple to use.
+      - link "Learn more" [ref=e11] [cursor=pointer]:
+        - /url: https://www.8x8.com/products/video-conferencing
+      - generic [ref=e12]: © 2023 8x8, Inc. All rights reserved.
+    - img [ref=e13]

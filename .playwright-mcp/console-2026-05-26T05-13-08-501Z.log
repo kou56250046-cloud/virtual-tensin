@@ -1,0 +1,19 @@
+[     524ms] [LOG] (TIME) index.html loaded:	 502.29999999981374 @ https://8x8.vc/:114
+[    1603ms] [INFO] 2026-05-26T05:13:10.099Z [INFO] [app:redux] <Object.persistState>:  redux state persisted. 99914b932bd37a50b983c5e7c90ae93b -> e3a8cefbbc9a56c08fcf68b19d01099f @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:1
+[    1703ms] [INFO] 2026-05-26T05:13:10.203Z [INFO] [core:JitsiMeetJS] <Object.init>:  This appears to be chrome, ver: 148.0.0.0 @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/lib-jitsi-meet.min.js?v=9168.6241:1
+[    1705ms] [INFO] 2026-05-26T05:13:10.205Z [INFO] [stats:LocalStatsCollector] <$n.connectAudioContext>:  Connecting audio context @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/lib-jitsi-meet.min.js?v=9168.6241:1
+[    1997ms] [INFO] 2026-05-26T05:13:10.497Z [INFO] [rtc:RTCUtils] <ns.init>:  Stereo: false @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/lib-jitsi-meet.min.js?v=9168.6241:1
+[    2002ms] [INFO] 2026-05-26T05:13:10.502Z [INFO] [app:lib-jitsi-meet] lib-jitsi-meet version: ec3d171ab4 @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:1
+[    2003ms] [INFO] 2026-05-26T05:13:10.504Z [INFO] [app:lib-jitsi-meet] User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:1
+[    2011ms] [LOG] 2026-05-26T05:13:10.511Z [LOG] [app:media] Start audio only set to false @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:1
+[    2014ms] [INFO] 2026-05-26T05:13:10.515Z [INFO] [app:analytics] Initialized 1 analytics handlers @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:1
+[    2059ms] [LOG] 2026-05-26T05:13:10.559Z [LOG] [app:index.web] <HTMLDocument.<anonymous>>:  (TIME) document ready:	 2037.6000000000931 @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:1
+[    2099ms] [LOG] Service worker registered. ServiceWorkerRegistration @ https://8x8.vc/:97
+[    2388ms] [WARNING] Amplitude Logger [Warn]: Plugin name is undefined. 
+      Generating a random UUID for plugin name: 50bf965b-98e1-45b8-92b8-4d6ead4f7466. 
+      Set a name for the plugin to prevent it from being added multiple times. @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:43
+[    2398ms] [INFO] 2026-05-26T05:13:10.898Z [INFO] [app:analytics] Amplitude initialized @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/app.bundle.min.js?v=9168.6241:1
+[    2648ms] [LOG] https://8x8.vc/ @ :1
+[    2648ms] [LOG] v=1&_v=j102&a=2083453013&t=pageview&_s=1&dl=https%3A%2F%2F8x8.vc%2F&ul=ja&dt=8x8%20Work&sr=1504x1003&vp=1036x789&_u=YGBACEABBAAAACAEK~&jid=919098382&gjid=2087387127&cid=1112044490.1779772391&tid=UA-12305417-2&_gid=182624663.1779772391&_r=1&_slc=1&gtm=45He65k1n81KLR8475v813164823za200zd813164823&gcd=13l3l3l3l1l1&dma=0&tag_exp=0~115938466~115938469~118128923~118694324~119034491&z=685828274 @ :2
+[    2738ms] [INFO] 2026-05-26T05:13:11.238Z [INFO] [rtc:RTCUtils] <ns._onMediaDevicesListChanged>:  list of media devices has changed: [InputDeviceInfo, InputDeviceInfo, MediaDeviceInfo] @ https://8x8.vc/v1/_cdn/meet8x8com_9168.6320/libs/lib-jitsi-meet.min.js?v=9168.6241:1
+[    3369ms] [LOG] (TIME) window loaded event:	 3348.399999999907 @ https://8x8.vc/:117

@@ -15,6 +15,7 @@ interface MySession {
   name: string;
   avatarUrl: string | null;
   color: string;
+  sessionCreatedAt: string | null;
 }
 
 interface SeatConfirm {
@@ -75,9 +76,37 @@ export default function RoomPage() {
           name: data.name,
           avatarUrl: data.avatarUrl ?? null,
           color: data.color,
+          sessionCreatedAt: data.sessionCreatedAt ?? null,
         });
       });
   }, [router]);
+
+  // 8時間経過で自動退室（通知なし・静かにログアウト）
+  useEffect(() => {
+    if (!me?.sessionCreatedAt) return;
+    const createdAt = new Date(me.sessionCreatedAt).getTime();
+    const expiresAt = createdAt + 8 * 60 * 60 * 1000;
+    const remaining = expiresAt - Date.now();
+
+    if (remaining <= 0) {
+      // すでに8時間超過 → 即退室
+      fetch('/api/auth/logout', { method: 'POST' }).then(() => router.push('/'));
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/');
+    }, remaining);
+
+    return () => clearTimeout(timer);
+  }, [me, router]);
+
+  // ゾンビセッション削除（last_seen が8時間以上古いセッションを削除）
+  useEffect(() => {
+    if (!me) return;
+    fetch('/api/sessions/cleanup', { method: 'POST' }).catch(() => null);
+  }, [me]);
 
   // Supabase Realtime
   useEffect(() => {
@@ -301,6 +330,8 @@ export default function RoomPage() {
           <ChatPanel
             mySessionId={me.sessionId}
             myName={me.name}
+            myAvatarUrl={me.avatarUrl}
+            sessions={sessions}
             onNewMessage={handleNewChatMessage}
           />
         </div>

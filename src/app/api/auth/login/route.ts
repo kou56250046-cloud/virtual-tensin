@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
   session.avatarUrl = null;
   session.color = color;
   session.isLoggedIn = true;
+  session.sessionCreatedAt = data.created_at; // 8時間タイマー用
   await session.save();
 
   return res;

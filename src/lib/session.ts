@@ -6,6 +6,7 @@ export interface SessionData {
   avatarUrl?: string | null;
   color?: string;
   isLoggedIn?: boolean;
+  sessionCreatedAt?: string; // セッション作成時刻（8時間タイマー用）
 }
 
 export const sessionOptions: SessionOptions = {
