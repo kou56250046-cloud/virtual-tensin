@@ -6,9 +6,11 @@ import { Session } from '@/types';
 import { createClient } from '@/lib/supabase/client';
 import RoomCanvas from '@/components/room/RoomCanvas';
 import ChatPanel from '@/components/room/ChatPanel';
-import CallDialog from '@/components/room/CallDialog';
+import AudioCallPanel from '@/components/room/AudioCallPanel';
+import IncomingGroupCallBanner from '@/components/room/IncomingGroupCallBanner';
 import ToastNotification, { Toast } from '@/components/room/ToastNotification';
 import { getSeatCenter } from '@/lib/zabuton';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface MySession {
   sessionId: string;
@@ -28,12 +30,16 @@ export default function RoomPage() {
   const router = useRouter();
   const [me, setMe] = useState<MySession | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [targetSession, setTargetSession] = useState<Session | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showParticipants, setShowParticipants] = useState(false);
   const [activeTab, setActiveTab] = useState<'room' | 'chat'>('room');
   const [unreadCount, setUnreadCount] = useState(0);
   const [seatConfirm, setSeatConfirm] = useState<SeatConfirm | null>(null);
+
+  // 全体通話
+  const [showCall, setShowCall] = useState(false);
+  const [incomingCallFrom, setIncomingCallFrom] = useState<string | null>(null);
+  const callChannelRef = useRef<RealtimeChannel | null>(null);
 
   // activeTab を ref で保持（handleNewChatMessage クロージャから参照するため）
   const activeTabRef = useRef(activeTab);
@@ -51,13 +57,13 @@ export default function RoomPage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // タブ切り替え（チャットタブを開いたとき未読をリセット）
+  // タブ切り替え
   const handleTabChange = useCallback((tab: 'room' | 'chat') => {
     setActiveTab(tab);
     if (tab === 'chat') setUnreadCount(0);
   }, []);
 
-  // チャット新着通知（チャットタブが非表示のときのみトースト + 未読カウント）
+  // チャット新着通知
   const handleNewChatMessage = useCallback((senderName: string) => {
     if (activeTabRef.current !== 'chat') {
       addToast(`💬 ${senderName}さんからメッセージ`, 'info');
@@ -81,7 +87,7 @@ export default function RoomPage() {
       });
   }, [router]);
 
-  // 8時間経過で自動退室（通知なし・静かにログアウト）
+  // 8時間経過で自動退室
   useEffect(() => {
     if (!me?.sessionCreatedAt) return;
     const createdAt = new Date(me.sessionCreatedAt).getTime();
@@ -89,7 +95,6 @@ export default function RoomPage() {
     const remaining = expiresAt - Date.now();
 
     if (remaining <= 0) {
-      // すでに8時間超過 → 即退室
       fetch('/api/auth/logout', { method: 'POST' }).then(() => router.push('/'));
       return;
     }
@@ -102,7 +107,7 @@ export default function RoomPage() {
     return () => clearTimeout(timer);
   }, [me, router]);
 
-  // ゾンビセッション削除（last_seen が8時間以上古いセッションを削除）
+  // ゾンビセッション削除
   useEffect(() => {
     if (!me) return;
     fetch('/api/sessions/cleanup', { method: 'POST' }).catch(() => null);
@@ -113,7 +118,6 @@ export default function RoomPage() {
     if (!me) return;
     const supabase = createClient();
 
-    // 現在の参加者取得
     supabase.from('sessions').select('*').then(({ data }) => {
       if (data) setSessions(data as Session[]);
     });
@@ -137,19 +141,16 @@ export default function RoomPage() {
       )
       .subscribe();
 
-    // 通話リクエスト購読
-    const callChannel = supabase
-      .channel('call-realtime')
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'call_requests',
-          filter: `to_session_id=eq.${me.sessionId}` },
-        (payload) => {
-          const fromId = payload.new.from_session_id;
-          const from = sessions.find((s) => s.id === fromId);
-          addToast(`📞 ${from?.name ?? '誰か'}さんから話しかけられています`, 'warning');
+    // 全体通話通知チャンネル
+    const callCh = supabase
+      .channel('group-call-signal')
+      .on('broadcast', { event: 'call-started' }, ({ payload }) => {
+        if ((payload as { fromSessionId: string }).fromSessionId !== me.sessionId) {
+          setIncomingCallFrom((payload as { fromName: string }).fromName);
         }
-      )
+      })
       .subscribe();
+    callChannelRef.current = callCh;
 
     // ハートビート（30秒）
     const hb = setInterval(() => {
@@ -158,10 +159,22 @@ export default function RoomPage() {
 
     return () => {
       supabase.removeChannel(channel);
-      supabase.removeChannel(callChannel);
+      supabase.removeChannel(callCh);
+      callChannelRef.current = null;
       clearInterval(hb);
     };
   }, [me, addToast]);
+
+  // 全体通話開始
+  const handleStartCall = useCallback(async () => {
+    if (!me) return;
+    setShowCall(true);
+    callChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'call-started',
+      payload: { fromSessionId: me.sessionId, fromName: me.name },
+    });
+  }, [me]);
 
   // アバター移動
   const handleMove = useCallback(async (x: number, y: number) => {
@@ -178,22 +191,14 @@ export default function RoomPage() {
   const handleZabutonClick = useCallback((seatId: string, x: number, y: number) => {
     if (!me) return;
 
-    // 着席中のユーザーを確認
-    const occupant = sessions.find((s) => s.seat_id === seatId);
-
-    if (occupant && occupant.id !== me.sessionId) {
-      // 他人が着席中 → 話しかける
-      setTargetSession(occupant);
-      return;
-    }
-
     if (mySeatId === seatId) {
-      // 自分が着席中 → 離席
       handleRiseki();
       return;
     }
 
-    // 空席 → 着席確認ダイアログ
+    const occupant = sessions.find((s) => s.seat_id === seatId);
+    if (occupant && occupant.id !== me.sessionId) return; // 他人着席中は無視
+
     const center = getSeatCenter(seatId);
     setSeatConfirm({ seatId, x: center?.x ?? x, y: center?.y ?? y });
   }, [me, sessions, mySeatId]);
@@ -203,7 +208,6 @@ export default function RoomPage() {
     if (!me || !seatConfirm) return;
     const { seatId, x, y } = seatConfirm;
 
-    // ローカル即時反映
     setSessions((p) => p.map((s) =>
       s.id === me.sessionId ? { ...s, seat_id: seatId, x, y } : s
     ));
@@ -220,7 +224,6 @@ export default function RoomPage() {
   const handleRiseki = useCallback(async () => {
     if (!me) return;
 
-    // ローカル即時反映
     setSessions((p) => p.map((s) =>
       s.id === me.sessionId ? { ...s, seat_id: null } : s
     ));
@@ -254,7 +257,6 @@ export default function RoomPage() {
         <span className="text-amber-200 font-bold text-sm">🕯️ 天心苑 祈祷室</span>
 
         <div className="flex items-center gap-2">
-          {/* 離席ボタン（着席中のみ表示） */}
           {mySeatId && (
             <button
               onClick={handleRiseki}
@@ -265,7 +267,6 @@ export default function RoomPage() {
             </button>
           )}
 
-          {/* 参加者 */}
           <button
             onClick={() => setShowParticipants(!showParticipants)}
             className="px-2 py-1 bg-amber-700/60 hover:bg-amber-600/60
@@ -286,9 +287,27 @@ export default function RoomPage() {
         </div>
       </header>
 
+      {/* 全体通話バナー（着信） */}
+      {incomingCallFrom && (
+        <IncomingGroupCallBanner
+          fromName={incomingCallFrom}
+          onJoin={() => { setShowCall(true); setIncomingCallFrom(null); }}
+          onDismiss={() => setIncomingCallFrom(null)}
+        />
+      )}
+
+      {/* 全体通話パネル */}
+      {showCall && (
+        <AudioCallPanel
+          mySessionId={me.sessionId}
+          myName={me.name}
+          onLeave={() => setShowCall(false)}
+        />
+      )}
+
       {/* メインエリア */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* キャンバス（モバイル: roomタブのみ表示、PC: 常時表示） */}
+        {/* キャンバス */}
         <div className={`flex-1 md:max-w-[900px] relative overflow-hidden md:overflow-y-auto bg-[#c49050]
           ${activeTab === 'room' ? 'flex' : 'hidden md:flex'} flex-col`}>
           <RoomCanvas
@@ -296,7 +315,6 @@ export default function RoomPage() {
             mySessionId={me.sessionId}
             mySeatId={mySeatId}
             onMove={handleMove}
-            onAvatarClick={setTargetSession}
             onZabutonClick={handleZabutonClick}
           />
 
@@ -320,7 +338,7 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* チャット（モバイル: chatタブのみ表示、PC: 常時サイドバー） */}
+        {/* チャット */}
         <div className={`
           ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}
           flex-col flex-1
@@ -333,11 +351,12 @@ export default function RoomPage() {
             myAvatarUrl={me.avatarUrl}
             sessions={sessions}
             onNewMessage={handleNewChatMessage}
+            onStartCall={handleStartCall}
           />
         </div>
       </div>
 
-      {/* スマホ用タブバー（PC では非表示） */}
+      {/* スマホ用タブバー */}
       <nav className="md:hidden shrink-0 flex border-t border-amber-900/40 bg-[#7a5230]/90">
         <button
           onClick={() => handleTabChange('room')}
@@ -406,8 +425,6 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* ダイアログ・通知 */}
-      <CallDialog target={targetSession} onClose={() => setTargetSession(null)} />
       <ToastNotification toasts={toasts} onRemove={removeToast} />
     </div>
   );

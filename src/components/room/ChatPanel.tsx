@@ -10,39 +10,32 @@ interface Props {
   myAvatarUrl?: string | null;
   sessions: Session[];
   onNewMessage?: (senderName: string) => void;
+  onStartCall: () => void;
 }
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🙏', '😮'];
 
-/** セッション一覧からアバターURLを名前で検索 */
-function getAvatarUrl(sessions: Session[], senderName: string): string | null {
-  return sessions.find((s) => s.name === senderName)?.avatar_url ?? null;
+/** セッション一覧からアバターURLを session_id で検索 */
+function getAvatarBySessionId(sessions: Session[], sessionId: string | null): string | null {
+  if (!sessionId) return null;
+  return sessions.find((s) => s.id === sessionId)?.avatar_url ?? null;
 }
 
 /** イニシャル円（アバター画像がない場合） */
-function InitialAvatar({ name, size = 28 }: { name: string; size?: number }) {
-  const initial = name.charAt(0).toUpperCase();
+function InitialAvatar({ name, size = 32 }: { name: string; size?: number }) {
   return (
     <div
       className="rounded-full bg-violet-500 flex items-center justify-center
                  text-white font-bold shrink-0 select-none"
       style={{ width: size, height: size, fontSize: size * 0.42 }}
     >
-      {initial}
+      {name.charAt(0).toUpperCase()}
     </div>
   );
 }
 
 /** 丸クリップアバター画像 */
-function AvatarImage({
-  url,
-  name,
-  size = 28,
-}: {
-  url: string | null;
-  name: string;
-  size?: number;
-}) {
+function AvatarImage({ url, name, size = 32 }: { url: string | null; name: string; size?: number }) {
   if (!url) return <InitialAvatar name={name} size={size} />;
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -55,18 +48,48 @@ function AvatarImage({
   );
 }
 
+/** メッセージ内の @mention をハイライト */
+function MessageContent({ content, myName }: { content: string; myName: string }) {
+  const parts = content.split(/(@\S+)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith('@')) {
+          const isMentionedMe = part === `@${myName}`;
+          return (
+            <span
+              key={i}
+              className={isMentionedMe ? 'text-amber-300 font-bold' : 'text-sky-300 font-medium'}
+            >
+              {part}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
 export default function ChatPanel({
   mySessionId,
   myName,
   myAvatarUrl,
   sessions,
   onNewMessage,
+  onStartCall,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [reactionTarget, setReactionTarget] = useState<string | null>(null); // メッセージID
+  const [reactionTarget, setReactionTarget] = useState<string | null>(null);
   const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  // メンション
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
 
@@ -76,7 +99,6 @@ export default function ChatPanel({
     });
   }, []);
 
-  // onNewMessage を ref で保持して Realtime 再購読を防ぐ
   const onNewMessageRef = useRef(onNewMessage);
   useEffect(() => { onNewMessageRef.current = onNewMessage; }, [onNewMessage]);
 
@@ -120,12 +142,8 @@ export default function ChatPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 新メッセージで自動スクロール
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
-  // visualViewport リスナー（スマホキーボード出現時に再スクロール）
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
@@ -138,7 +156,6 @@ export default function ChatPanel({
     return () => vv.removeEventListener('resize', handleResize);
   }, []);
 
-  // チャットタブを開いたとき: 未読メッセージをまとめて既読にする
   useEffect(() => {
     const unread = messages.filter(
       (m) => m.session_id !== mySessionId && !(m.read_by ?? []).includes(mySessionId)
@@ -147,7 +164,33 @@ export default function ChatPanel({
       fetch(`/api/messages/${m.id}/read`, { method: 'POST' }).catch(() => null);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // マウント時のみ
+  }, []);
+
+  // 入力変更（メンション検出）
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    const atMatch = value.match(/@([^\s]*)$/);
+    if (atMatch) {
+      setMentionQuery(atMatch[1]);
+      setShowMentionMenu(true);
+    } else {
+      setShowMentionMenu(false);
+      setMentionQuery('');
+    }
+  };
+
+  // メンション挿入
+  const insertMention = (name: string) => {
+    const newInput = input.replace(/@[^\s]*$/, `@${name} `);
+    setInput(newInput);
+    setShowMentionMenu(false);
+    setMentionQuery('');
+    inputRef.current?.focus();
+  };
+
+  const mentionCandidates = sessions.filter(
+    (s) => s.name.includes(mentionQuery) && s.id !== mySessionId
+  );
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +199,7 @@ export default function ChatPanel({
 
     setSending(true);
     setInput('');
+    setShowMentionMenu(false);
 
     const { error } = await supabase.from('messages').insert({
       session_id: mySessionId,
@@ -168,7 +212,6 @@ export default function ChatPanel({
     setSending(false);
   };
 
-  // リアクション送信
   const sendReaction = async (messageId: string, emoji: string) => {
     setReactionTarget(null);
     await fetch(`/api/messages/${messageId}/react`, {
@@ -178,15 +221,11 @@ export default function ChatPanel({
     });
   };
 
-  // 長押し開始
   const handleLongPressStart = (messageId: string) => {
-    const timer = setTimeout(() => {
-      setReactionTarget(messageId);
-    }, 500);
+    const timer = setTimeout(() => setReactionTarget(messageId), 500);
     setLongPressTimer(timer);
   };
 
-  // 長押し解除
   const handleLongPressEnd = () => {
     if (longPressTimer) {
       clearTimeout(longPressTimer);
@@ -194,14 +233,11 @@ export default function ChatPanel({
     }
   };
 
-  // 既読数を計算（自分の送信メッセージに対して）
   const getReadCount = (msg: Message) => {
     const readBy = msg.read_by ?? [];
-    // 自分自身を除いた既読数
     return readBy.filter((id) => id !== mySessionId).length;
   };
 
-  // 連続投稿の判定（前のメッセージと同じ送信者かどうか）
   const isSameSenderAsPrev = (index: number) => {
     if (index === 0) return false;
     return messages[index].session_id === messages[index - 1].session_id;
@@ -210,8 +246,18 @@ export default function ChatPanel({
   return (
     <div className="flex flex-col h-full bg-[#0a0f28]/80 border-l border-white/10">
       {/* ヘッダー */}
-      <div className="px-3 py-2 border-b border-white/10 shrink-0">
+      <div className="px-3 py-2 border-b border-white/10 shrink-0 flex items-center justify-between">
         <h3 className="text-xs font-medium text-amber-300/80">💬 チャット</h3>
+        <button
+          onClick={onStartCall}
+          title="グループ通話を開始"
+          className="w-7 h-7 rounded-full flex items-center justify-center
+                     bg-green-500/20 hover:bg-green-500/40 text-green-400
+                     hover:text-green-300 transition text-base"
+          aria-label="グループ通話"
+        >
+          📞
+        </button>
       </div>
 
       {/* メッセージ一覧 */}
@@ -225,56 +271,49 @@ export default function ChatPanel({
           const samePrev = isSameSenderAsPrev(index);
           const avatarUrl = isMe
             ? myAvatarUrl ?? null
-            : (msg.sender_avatar_url ?? getAvatarUrl(sessions, msg.sender_name));
+            : (getAvatarBySessionId(sessions, msg.session_id) ?? msg.sender_avatar_url ?? null);
           const readCount = isMe ? getReadCount(msg) : 0;
           const reactions = msg.reactions ?? {};
           const hasReactions = Object.keys(reactions).length > 0;
 
           return (
             <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-              {/* 吹き出し本体 */}
-              <div
-                className={`flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} max-w-[88%]`}
-              >
-                {/* アバター（連続投稿では非表示） */}
+              <div className={`flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} max-w-[88%]`}>
+                {/* アバター（他者のみ・連続投稿では空白） */}
                 {!isMe && (
-                  <div className="mb-0.5" style={{ width: 28, height: 28 }}>
+                  <div className="mb-0.5 self-end" style={{ width: 32, height: 32 }}>
                     {!samePrev ? (
-                      <AvatarImage url={avatarUrl} name={msg.sender_name} size={28} />
+                      <AvatarImage url={avatarUrl} name={msg.sender_name} size={32} />
                     ) : (
-                      <div style={{ width: 28, height: 28 }} />
+                      <div style={{ width: 32, height: 32 }} />
                     )}
                   </div>
                 )}
 
                 <div className={`flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
-                  {/* 送信者名（連続投稿では非表示、自分は非表示） */}
+                  {/* 送信者名（他者・連続投稿では非表示） */}
                   {!isMe && !samePrev && (
-                    <span className="text-white/50 text-[10px] px-1">{msg.sender_name}</span>
+                    <span className="text-white/50 text-[10px] px-1 ml-0.5">{msg.sender_name}</span>
                   )}
 
-                  {/* 吹き出しとリアクション */}
+                  {/* 吹き出し */}
                   <div
                     className={`relative flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                     onTouchStart={() => handleLongPressStart(msg.id)}
                     onTouchEnd={handleLongPressEnd}
                     onTouchCancel={handleLongPressEnd}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setReactionTarget(msg.id);
-                    }}
+                    onContextMenu={(e) => { e.preventDefault(); setReactionTarget(msg.id); }}
                   >
-                    {/* 吹き出し本文 */}
                     <div
                       className={`
-                        relative px-3 py-2 rounded-2xl text-xs break-words max-w-full
+                        px-3 py-2 rounded-2xl text-xs break-words max-w-full leading-relaxed
                         ${isMe
-                          ? 'bg-amber-500/70 text-white rounded-br-sm'
-                          : 'bg-white/15 text-white/90 rounded-bl-sm'
+                          ? 'bg-amber-500/70 text-white rounded-tr-sm'
+                          : 'bg-white/15 text-white/90 rounded-tl-sm'
                         }
                       `}
                     >
-                      {msg.content}
+                      <MessageContent content={msg.content} myName={myName} />
                     </div>
 
                     {/* リアクション表示 */}
@@ -305,7 +344,7 @@ export default function ChatPanel({
                   </div>
                 </div>
 
-                {/* 既読表示（自分のメッセージのみ） */}
+                {/* 既読表示 */}
                 {isMe && (
                   <div className="text-[9px] text-white/30 mb-1 self-end">
                     {readCount > 0 && `既読 ${readCount}`}
@@ -315,12 +354,7 @@ export default function ChatPanel({
 
               {/* リアクション選択パネル */}
               {reactionTarget === msg.id && (
-                <div
-                  className={`
-                    flex gap-1 mt-1 p-1.5 rounded-2xl bg-[#1a1f40]/90 border border-white/10
-                    shadow-lg backdrop-blur-sm
-                  `}
-                >
+                <div className="flex gap-1 mt-1 p-1.5 rounded-2xl bg-[#1a1f40]/90 border border-white/10 shadow-lg">
                   {REACTION_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
@@ -345,17 +379,34 @@ export default function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
+      {/* メンション候補ドロップダウン */}
+      {showMentionMenu && mentionCandidates.length > 0 && (
+        <div className="mx-2 mb-1 bg-[#1a2040] border border-white/20 rounded-xl overflow-hidden shadow-lg">
+          {mentionCandidates.slice(0, 5).map((s) => (
+            <button
+              key={s.id}
+              onClick={() => insertMention(s.name)}
+              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/10 transition text-left"
+            >
+              <AvatarImage url={s.avatar_url} name={s.name} size={24} />
+              <span className="text-white text-xs">{s.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 入力フォーム */}
       <form onSubmit={sendMessage} className="p-2 border-t border-white/10 flex gap-2 shrink-0 bg-[#0a0f28]/90">
         <input
+          ref={inputRef}
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => handleInputChange(e.target.value)}
           onFocus={() => {
             scrollToBottom();
             setTimeout(() => scrollToBottom(), 300);
           }}
-          placeholder="メッセージを入力..."
+          placeholder="メッセージを入力... (@でメンション)"
           maxLength={200}
           style={{ fontSize: '16px' }}
           className="flex-1 bg-white/10 border border-white/20 rounded-full px-3 py-1.5

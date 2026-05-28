@@ -15,7 +15,6 @@ interface Props {
   mySessionId: string;
   mySeatId: string | null;
   onMove: (x: number, y: number) => void;
-  onAvatarClick: (session: Session) => void;
   onZabutonClick: (seatId: string, x: number, y: number) => void;
 }
 
@@ -29,7 +28,6 @@ export default function RoomCanvas({
   mySessionId,
   mySeatId,
   onMove,
-  onAvatarClick,
   onZabutonClick,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -109,29 +107,19 @@ export default function RoomCanvas({
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const { x, y } = getCanvasPos(e.clientX, e.clientY);
 
-      // 1. 他のアバターをクリック → 話しかける
-      for (const s of sessions) {
-        if (s.id === mySessionId) continue;
-        const radius = s.seat_id ? SEATED_RADIUS : AVATAR_RADIUS;
-        if (Math.hypot(x - s.x, y - s.y) <= radius + 6) {
-          onAvatarClick(s);
-          return;
-        }
-      }
-
-      // 2. 座布団エリアをクリック → 着席/離席
+      // 1. 座布団エリアをクリック → 着席/離席
       const seatId = getZabutonAt(x, y);
       if (seatId) {
         onZabutonClick(seatId, x, y);
         return;
       }
 
-      // 3. 床をクリック → 移動（着席中は移動不可）
+      // 2. 床をクリック → 移動（着席中は移動不可）
       if (!mySeatId) {
         onMove(x, y);
       }
     },
-    [sessions, mySessionId, mySeatId, onMove, onAvatarClick, onZabutonClick, getCanvasPos]
+    [mySessionId, mySeatId, onMove, onZabutonClick, getCanvasPos]
   );
 
   const handleTouch = useCallback(
@@ -178,20 +166,11 @@ export default function RoomCanvas({
       panStartRef.current = null;
       const { x, y } = getCanvasPos(t.clientX, t.clientY);
 
-      for (const s of sessions) {
-        if (s.id === mySessionId) continue;
-        const radius = s.seat_id ? SEATED_RADIUS : AVATAR_RADIUS;
-        if (Math.hypot(x - s.x, y - s.y) <= radius + 12) {
-          onAvatarClick(s);
-          return;
-        }
-      }
-
       const seatId = getZabutonAt(x, y);
       if (seatId) { onZabutonClick(seatId, x, y); return; }
       if (!mySeatId) { onMove(x, y); }
     },
-    [sessions, mySessionId, mySeatId, onMove, onAvatarClick, onZabutonClick, getCanvasPos]
+    [mySessionId, mySeatId, onMove, onZabutonClick, getCanvasPos]
   );
 
   // ─ onTouchMove: ピンチズーム / パン ─
